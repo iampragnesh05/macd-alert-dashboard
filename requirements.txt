@@ -1,13 +1,5 @@
-<<<<<<< HEAD
 streamlit
 yfinance
 pandas
 numpy
 plotly
-=======
-streamlit
-yfinance
-pandas
-numpy
-plotly
->>>>>>> f3013d2758f9b37e133694e81ec08766e21a1e0a
