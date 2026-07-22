@@ -48,9 +48,9 @@ def fetch_candles(symbol: str, interval: str, period: str = "5d") -> pd.DataFram
 
 def get_current_price(symbol: str, df: pd.DataFrame) -> dict:
     """
-    Returns the latest price plus change vs previous close.
-    Tries yfinance's live quote first (fast_info), falls back to the
-    last candle close if that's unavailable (e.g. market closed).
+    Returns the latest price plus change vs previous close, along with
+    the timestamp that price is "as of" and how much lag that implies
+    vs right now -- so you can see if your data is fresh or delayed.
     """
     price, prev_close = None, None
     try:
@@ -67,9 +67,21 @@ def get_current_price(symbol: str, df: pd.DataFrame) -> dict:
     elif prev_close is None and not df.empty:
         prev_close = df["close"].iloc[-1]
 
+    # "as_of" = timestamp of the latest candle we have -- the most honest
+    # way to know how fresh the price actually is (yfinance doesn't give
+    # a separate timestamp for fast_info's live quote).
+    as_of = df.index[-1] if not df.empty else None
+    lag_seconds = None
+    if as_of is not None:
+        now = pd.Timestamp.now(tz=as_of.tz) if as_of.tzinfo is not None else pd.Timestamp.now()
+        lag_seconds = max((now - as_of).total_seconds(), 0)
+
     change = (price - prev_close) if (price is not None and prev_close is not None) else 0
     pct_change = (change / prev_close * 100) if prev_close else 0
-    return {"price": price, "change": change, "pct_change": pct_change}
+    return {
+        "price": price, "change": change, "pct_change": pct_change,
+        "as_of": as_of, "lag_seconds": lag_seconds,
+    }
 
 
 # ----------------------------------------------------------------------
@@ -302,6 +314,15 @@ def main():
         f"₹{quote['price']:.2f}" if quote["price"] is not None else "N/A",
         f"{quote['change']:+.2f} ({quote['pct_change']:+.2f}%)",
     )
+    if quote["as_of"] is not None:
+        lag = quote["lag_seconds"]
+        if lag is not None and lag < 120:
+            lag_text = f"{int(lag)} sec ago"
+        elif lag is not None:
+            lag_text = f"{int(lag // 60)} min ago"
+        else:
+            lag_text = ""
+        price_col.caption(f"🕒 As of {quote['as_of'].strftime('%d %b, %H:%M:%S')} ({lag_text})")
     latest_macd = df["macd"].iloc[-1]
     macd_col.metric("Latest MACD", f"{latest_macd:.4f}")
     state_col.metric("Zone", "🟢 Above zero (bullish)" if latest_macd >= 0 else "🔴 Below zero (bearish)")
